@@ -10,12 +10,17 @@ CLIENT_ID = "SPAR_SLOVENIA"
 CLIENT_NAME = "e-commerce Moira Engine client SPAR_SLOVENIA"
 CLIENT_VERSION = "0.18.581"
 
+# Firebase Auth
+FIREBASE_API_KEY = "AIzaSyCmfNNEuGo-cUWzi5R43h5B52CuRw-KckA"
+FIREBASE_AUTH_URL = (
+    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+)
+
 # Store defaults
-DEFAULT_STORE_ID = "4"
 DEFAULT_STORE_REFERENCE = "81701"
 
 # Config keys
-CONF_STORE_ID = "store_id"
+CONF_STORE_REFERENCE = "store_reference"
 
 # Timeouts
 API_TIMEOUT = 15

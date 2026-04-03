@@ -11,7 +11,7 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SparApiClient, SparAuthError, SparConnectionError
-from .const import CONF_STORE_ID, DEFAULT_STORE_ID, DOMAIN
+from .const import CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +19,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_EMAIL): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_STORE_ID, default=DEFAULT_STORE_ID): str,
+        vol.Optional(
+            CONF_STORE_REFERENCE, default=DEFAULT_STORE_REFERENCE
+        ): str,
     }
 )
 
@@ -51,7 +53,7 @@ class SparSiConfigFlow(ConfigFlow, domain=DOMAIN):
                 session=session,
                 email=user_input[CONF_EMAIL],
                 password=user_input[CONF_PASSWORD],
-                store_id=user_input.get(CONF_STORE_ID, DEFAULT_STORE_ID),
+                store_reference=user_input.get(CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE),
             )
 
             try:
@@ -95,7 +97,7 @@ class SparSiConfigFlow(ConfigFlow, domain=DOMAIN):
                 session=session,
                 email=reauth_entry.data[CONF_EMAIL],
                 password=user_input[CONF_PASSWORD],
-                store_id=reauth_entry.data.get(CONF_STORE_ID, DEFAULT_STORE_ID),
+                store_reference=reauth_entry.data.get(CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE),
             )
 
             try:

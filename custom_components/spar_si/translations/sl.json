@@ -7,10 +7,10 @@
         "data": {
           "email": "E-pošta",
           "password": "Geslo",
-          "store_id": "ID trgovine"
+          "store_reference": "Referenca trgovine"
         },
         "data_description": {
-          "store_id": "Pustite privzeto (4) za Ljubljana Interspar."
+          "store_reference": "Pustite privzeto (81701) za Ljubljana Interspar."
         }
       },
       "reauth_confirm": {

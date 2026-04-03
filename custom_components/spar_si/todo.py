@@ -155,14 +155,18 @@ class SparCartEntity(
 
     def _cart_item_to_todo(self, item: SparCartItem) -> TodoItem:
         """Convert a SPAR cart item to a HA todo item."""
+        qty_str = (
+            f"{item.unit_quantity:g}"
+            if item.unit_quantity != int(item.unit_quantity)
+            else str(int(item.unit_quantity))
+        )
         return TodoItem(
-            uid=item.sku,
-            summary=f"{item.name} ({item.quantity}x)",
+            uid=item.product_id,
+            summary=f"{item.name} ({qty_str} {item.unit})",
             status=TodoItemStatus.NEEDS_ACTION,
             description=(
-                f"SKU: {item.sku} | "
-                f"Cena: {item.price:.2f} EUR | "
-                f"Skupaj: {item.total:.2f} EUR"
+                f"REF: {item.reference} | "
+                f"Cena: {item.price_total:.2f} EUR"
             ),
         )
 
@@ -171,7 +175,6 @@ class SparCartEntity(
         if not item.summary:
             return
 
-        # Search for the product
         products = await self.coordinator.client.async_search_products(
             query=item.summary, page_size=1
         )
@@ -181,7 +184,7 @@ class SparCartEntity(
 
         product = products[0]
         await self.coordinator.client.async_add_to_cart(
-            sku=product.sku, quantity=1
+            reference=product.sku, unit=product.unit, unit_quantity=1.0
         )
         await self.coordinator.async_request_refresh()
 
@@ -191,12 +194,15 @@ class SparCartEntity(
             return
 
         if item.status == TodoItemStatus.COMPLETED:
-            # Marking as complete removes from cart
-            await self.coordinator.client.async_remove_from_cart(sku=item.uid)
+            await self.coordinator.client.async_remove_from_cart(
+                product_id=item.uid
+            )
         await self.coordinator.async_request_refresh()
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Remove products from the cart."""
-        for sku in uids:
-            await self.coordinator.client.async_remove_from_cart(sku=sku)
+        for product_id in uids:
+            await self.coordinator.client.async_remove_from_cart(
+                product_id=product_id
+            )
         await self.coordinator.async_request_refresh()

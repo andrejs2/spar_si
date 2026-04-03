@@ -11,7 +11,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SparApiClient, SparAuthError, SparConnectionError
-from .const import CONF_STORE_ID, DEFAULT_STORE_ID, DOMAIN
+from .const import CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE, DOMAIN
 from .coordinator import SparConfigEntry, SparCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ async def async_setup_entry(
         session=session,
         email=entry.data[CONF_EMAIL],
         password=entry.data[CONF_PASSWORD],
-        store_id=entry.data.get(CONF_STORE_ID, DEFAULT_STORE_ID),
+        store_reference=entry.data.get(CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE),
     )
 
     try:

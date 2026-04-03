@@ -7,10 +7,10 @@
         "data": {
           "email": "Email",
           "password": "Password",
-          "store_id": "Store ID"
+          "store_reference": "Store reference"
         },
         "data_description": {
-          "store_id": "Leave default (4) for Ljubljana Interspar."
+          "store_reference": "Leave default (81701) for Ljubljana Interspar."
         }
       },
       "reauth_confirm": {

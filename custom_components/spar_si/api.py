@@ -13,7 +13,10 @@ from .const import (
     CLIENT_ID,
     CLIENT_NAME,
     CLIENT_VERSION,
+    DEFAULT_STORE_REFERENCE,
     DPL_API_KEY,
+    FIREBASE_API_KEY,
+    FIREBASE_AUTH_URL,
     GRAPHQL_V2_URL,
     GRAPHQL_V3_URL,
 )
@@ -57,12 +60,12 @@ class SparCartItem:
     """An item in the SPAR Online cart."""
 
     product_id: str
-    sku: str
+    reference: str
     name: str
-    quantity: int
     unit: str
-    price: float
-    total: float
+    unit_quantity: float
+    price_total: float
+    price_subtotal: float
     image_url: str | None = None
 
 
@@ -72,7 +75,6 @@ class SparCart:
 
     cart_id: str
     items: list[SparCartItem] = field(default_factory=list)
-    total: float = 0.0
     item_count: int = 0
 
 
@@ -86,6 +88,30 @@ class SparCustomer:
     uid: str
 
 
+# ─── GraphQL fragments ────────────────────────────────────────────
+
+CART_PRODUCT_FIELDS = """
+    id
+    name
+    reference
+    unit
+    unitQuantity
+    imageUrl
+    price {
+        total
+        subtotal
+    }
+"""
+
+CART_FIELDS = f"""
+    id
+    status
+    products {{
+        {CART_PRODUCT_FIELDS}
+    }}
+"""
+
+
 class SparApiClient:
     """Async API client for SPAR Online."""
 
@@ -94,13 +120,13 @@ class SparApiClient:
         session: aiohttp.ClientSession,
         email: str,
         password: str,
-        store_id: str = "4",
+        store_reference: str = DEFAULT_STORE_REFERENCE,
     ) -> None:
         """Initialize the client."""
         self._session = session
         self._email = email
         self._password = password
-        self._store_id = store_id
+        self._store_reference = store_reference
         self._token: str | None = None
         self._customer: SparCustomer | None = None
         self._cart_id: str | None = None
@@ -154,7 +180,6 @@ class SparApiClient:
 
         if "errors" in data:
             errors = data["errors"]
-            # Check for auth errors
             for error in errors:
                 code = error.get("extensions", {}).get("code", "")
                 if code == "UNAUTHENTICATED":
@@ -188,11 +213,52 @@ class SparApiClient:
 
     # ─── Authentication ────────────────────────────────────────────
 
+    async def _firebase_sign_in(self) -> str:
+        """Sign in via Firebase Auth REST API, return idToken."""
+        url = f"{FIREBASE_AUTH_URL}?key={FIREBASE_API_KEY}"
+        payload = {
+            "email": self._email,
+            "password": self._password,
+            "returnSecureToken": True,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Referer": "https://online.spar.si/",
+            "Origin": "https://online.spar.si",
+        }
+
+        try:
+            async with async_timeout.timeout(API_TIMEOUT):
+                async with self._session.post(
+                    url, json=payload, headers=headers
+                ) as resp:
+                    data = await resp.json()
+                    if resp.status != 200:
+                        error_msg = data.get("error", {}).get(
+                            "message", "Unknown Firebase error"
+                        )
+                        raise SparAuthError(
+                            f"Firebase auth failed: {error_msg}"
+                        )
+                    return data["idToken"]
+        except TimeoutError as err:
+            raise SparConnectionError(
+                "Firebase auth request timed out"
+            ) from err
+        except aiohttp.ClientError as err:
+            raise SparConnectionError(
+                f"Firebase connection error: {err}"
+            ) from err
+
     async def async_authenticate(self) -> SparCustomer:
-        """Authenticate with SPAR Online using email/password (v3)."""
+        """Authenticate: Firebase Auth -> Instaleap JWT (v2 signIn)."""
+        # Step 1: Firebase sign in
+        firebase_token = await self._firebase_sign_in()
+
+        # Step 2: Exchange for Instaleap JWT
         query = """
-        mutation SignIn($signInInput: SignInInput!) {
-            signIn(signInInput: $signInInput) {
+        mutation SignIn($clientId: String!, $accessToken: String!) {
+            signIn(clientId: $clientId, accessToken: $accessToken) {
                 customer {
                     id
                     name
@@ -204,22 +270,19 @@ class SparApiClient:
         }
         """
         variables = {
-            "signInInput": {
-                "clientId": CLIENT_ID,
-                "email": self._email,
-                "password": self._password,
-            }
+            "clientId": CLIENT_ID,
+            "accessToken": firebase_token,
         }
 
         try:
-            data = await self._request_v3(query, variables, "SignIn")
+            data = await self._request_v2(query, variables, "SignIn")
         except SparApiError as err:
-            raise SparAuthError(f"Authentication failed: {err}") from err
+            raise SparAuthError(f"Instaleap auth failed: {err}") from err
 
         sign_in = data.get("signIn", {})
         self._token = sign_in.get("token")
         if not self._token:
-            raise SparAuthError("No token received")
+            raise SparAuthError("No token received from Instaleap")
 
         customer_data = sign_in.get("customer", {})
         self._customer = SparCustomer(
@@ -231,11 +294,6 @@ class SparApiClient:
         _LOGGER.debug("Authenticated as %s", self._customer.email)
         return self._customer
 
-    async def async_validate_credentials(self) -> bool:
-        """Validate credentials by attempting authentication."""
-        await self.async_authenticate()
-        return True
-
     async def _ensure_authenticated(self) -> None:
         """Ensure we have a valid token, re-authenticate if needed."""
         if not self._token:
@@ -246,7 +304,7 @@ class SparApiClient:
     async def async_search_products(
         self,
         query: str,
-        store_reference: str = "81701",
+        store_reference: str | None = None,
         page_size: int = 20,
         page: int = 1,
     ) -> list[SparProduct]:
@@ -270,20 +328,18 @@ class SparApiClient:
                     maxQty
                     minQty
                     categories {
-                        id
                         name
                     }
                 }
-                totalCount
             }
         }
         """
         variables = {
             "input": {
-                "storeReference": store_reference,
+                "storeReference": store_reference or self._store_reference,
                 "pageSize": page_size,
                 "currentPage": page,
-                "search": [{"query": query, "fields": ["name"]}],
+                "search": [{"query": query}],
             }
         }
 
@@ -324,42 +380,57 @@ class SparApiClient:
         """Get the active cart or create a new one."""
         await self._ensure_authenticated()
 
-        gql = """
-        mutation GetActiveOrCreateEcommerceCart($input: CreateEcommerceCartInput!) {
-            getActiveOrCreateEcommerceCart(createCartInput: $input) {
-                id
-                products {
-                    product {
-                        sku
-                        name
-                        price
-                        unit
-                        photosUrl
-                    }
-                    quantity
-                    total
-                }
-                total
-            }
-        }
+        # Try to get active cart first
+        gql_get = f"""
+        query GetActiveEcommerceCart($input: GetActiveEcommerceCartInput!) {{
+            getActiveEcommerceCart(getActiveCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
         """
-        variables = {
+        variables_get = {
             "input": {
-                "storeId": self._store_id,
+                "storeReference": self._store_reference,
+                "operationalModel": "DELIVERY",
             }
         }
 
         try:
             data = await self._request_v3(
-                gql, variables, "GetActiveOrCreateEcommerceCart"
+                gql_get, variables_get, "GetActiveEcommerceCart"
+            )
+            cart_data = data.get("getActiveEcommerceCart")
+            if cart_data:
+                return self._parse_cart(cart_data)
+        except SparApiError:
+            _LOGGER.debug("No active cart found, creating new one")
+
+        # Create new cart
+        gql_create = f"""
+        mutation CreateEcommerceCart($input: CreateEcommerceCartInput!) {{
+            createEcommerceCart(createCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
+        """
+        variables_create = {
+            "input": {
+                "storeReference": self._store_reference,
+                "operationalModel": "DELIVERY",
+            }
+        }
+
+        try:
+            data = await self._request_v3(
+                gql_create, variables_create, "CreateEcommerceCart"
             )
         except SparAuthError:
             await self.async_authenticate()
             data = await self._request_v3(
-                gql, variables, "GetActiveOrCreateEcommerceCart"
+                gql_create, variables_create, "CreateEcommerceCart"
             )
 
-        cart_data = data.get("getActiveOrCreateEcommerceCart", {})
+        cart_data = data.get("createEcommerceCart", {})
         return self._parse_cart(cart_data)
 
     async def async_get_cart(self) -> SparCart:
@@ -369,24 +440,12 @@ class SparApiClient:
         if not self._cart_id:
             return await self.async_get_or_create_cart()
 
-        gql = """
-        query GetEcommerceCart($cartId: ID!) {
-            getEcommerceCart(cartId: $cartId) {
-                id
-                products {
-                    product {
-                        sku
-                        name
-                        price
-                        unit
-                        photosUrl
-                    }
-                    quantity
-                    total
-                }
-                total
-            }
-        }
+        gql = f"""
+        query GetEcommerceCart($cartId: ID!) {{
+            getEcommerceCart(cartId: $cartId) {{
+                {CART_FIELDS}
+            }}
+        }}
         """
         try:
             data = await self._request_v3(
@@ -402,38 +461,30 @@ class SparApiClient:
         return self._parse_cart(cart_data)
 
     async def async_add_to_cart(
-        self, sku: str, quantity: int = 1
+        self,
+        reference: str,
+        unit: str = "KOS",
+        unit_quantity: float = 1.0,
     ) -> SparCart:
-        """Add a product to the cart."""
+        """Add a product to the cart by reference (SKU)."""
         await self._ensure_authenticated()
 
         if not self._cart_id:
             await self.async_get_or_create_cart()
 
-        gql = """
-        mutation AddProductToEcommerceCart($input: AddProductToCartInput!) {
-            addProductToEcommerceCart(addProductToCartInput: $input) {
-                id
-                products {
-                    product {
-                        sku
-                        name
-                        price
-                        unit
-                        photosUrl
-                    }
-                    quantity
-                    total
-                }
-                total
-            }
-        }
+        gql = f"""
+        mutation AddProductToEcommerceCart($input: AddProductToCartInput!) {{
+            addProductToEcommerceCart(addProductToCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
         """
         variables = {
             "input": {
                 "cartId": self._cart_id,
-                "sku": sku,
-                "quantity": quantity,
+                "reference": reference,
+                "unit": unit,
+                "unitQuantity": unit_quantity,
             }
         }
 
@@ -451,84 +502,64 @@ class SparApiClient:
         return self._parse_cart(cart_data)
 
     async def async_update_cart_item(
-        self, sku: str, quantity: int
+        self,
+        product_id: str,
+        unit_quantity: float | None = None,
+        unit: str | None = None,
     ) -> SparCart:
-        """Update quantity of a product in the cart."""
+        """Update a product in the cart by its cart product ID."""
         await self._ensure_authenticated()
 
         if not self._cart_id:
             raise SparApiError("No active cart")
 
-        gql = """
-        mutation UpdateProductInEcommerceCart($input: UpdateProductInCartInput!) {
-            updateProductInEcommerceCart(updateProductInCartInput: $input) {
-                id
-                products {
-                    product {
-                        sku
-                        name
-                        price
-                        unit
-                        photosUrl
-                    }
-                    quantity
-                    total
-                }
-                total
-            }
-        }
+        gql = f"""
+        mutation UpdateProductInEcommerceCart($input: UpdateProductInCartInput!) {{
+            updateProductInEcommerceCart(updateProductInCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
         """
-        variables = {
-            "input": {
-                "cartId": self._cart_id,
-                "sku": sku,
-                "quantity": quantity,
-            }
+        input_data: dict[str, Any] = {
+            "cartId": self._cart_id,
+            "productId": product_id,
         }
+        if unit_quantity is not None:
+            input_data["unitQuantity"] = unit_quantity
+        if unit is not None:
+            input_data["unit"] = unit
 
         try:
             data = await self._request_v3(
-                gql, variables, "UpdateProductInEcommerceCart"
+                gql, {"input": input_data}, "UpdateProductInEcommerceCart"
             )
         except SparAuthError:
             await self.async_authenticate()
             data = await self._request_v3(
-                gql, variables, "UpdateProductInEcommerceCart"
+                gql, {"input": input_data}, "UpdateProductInEcommerceCart"
             )
 
         cart_data = data.get("updateProductInEcommerceCart", {})
         return self._parse_cart(cart_data)
 
-    async def async_remove_from_cart(self, sku: str) -> SparCart:
-        """Remove a product from the cart."""
+    async def async_remove_from_cart(self, product_id: str) -> SparCart:
+        """Remove a product from the cart by its cart product ID."""
         await self._ensure_authenticated()
 
         if not self._cart_id:
             raise SparApiError("No active cart")
 
-        gql = """
-        mutation DeleteProductInEcommerceCart($input: DeleteProductInCartInput!) {
-            deleteProductInEcommerceCart(deleteProductInCartInput: $input) {
-                id
-                products {
-                    product {
-                        sku
-                        name
-                        price
-                        unit
-                        photosUrl
-                    }
-                    quantity
-                    total
-                }
-                total
-            }
-        }
+        gql = f"""
+        mutation DeleteProductInEcommerceCart($input: DeleteProductInCartInput!) {{
+            deleteProductInEcommerceCart(deleteProductInCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
         """
         variables = {
             "input": {
                 "cartId": self._cart_id,
-                "sku": sku,
+                "productId": product_id,
             }
         }
 
@@ -552,24 +583,24 @@ class SparApiClient:
 
         items = []
         for item_data in data.get("products", []):
-            product = item_data.get("product", {})
-            photos = product.get("photosUrl", [])
+            price_data = item_data.get("price", {})
             items.append(
                 SparCartItem(
-                    product_id=product.get("id", product.get("sku", "")),
-                    sku=product.get("sku", ""),
-                    name=product.get("name", ""),
-                    quantity=int(item_data.get("quantity", 1)),
-                    unit=product.get("unit", "KOS"),
-                    price=float(product.get("price", 0)),
-                    total=float(item_data.get("total", 0)),
-                    image_url=photos[0] if photos else None,
+                    product_id=item_data.get("id", ""),
+                    reference=item_data.get("reference", ""),
+                    name=item_data.get("name", ""),
+                    unit=item_data.get("unit", "KOS"),
+                    unit_quantity=float(
+                        item_data.get("unitQuantity", 1)
+                    ),
+                    price_total=float(price_data.get("total", 0)),
+                    price_subtotal=float(price_data.get("subtotal", 0)),
+                    image_url=item_data.get("imageUrl"),
                 )
             )
 
         return SparCart(
             cart_id=cart_id,
             items=items,
-            total=float(data.get("total", 0)),
             item_count=len(items),
         )
