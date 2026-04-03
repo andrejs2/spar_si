@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to SPAR Online",
+        "description": "Enter your online.spar.si credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "store_id": "Store ID"
+        },
+        "data_description": {
+          "store_id": "Leave default (4) for Ljubljana Interspar."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with SPAR Online",
+        "description": "Your session has expired. Please enter your password again.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password",
+      "cannot_connect": "Cannot connect to SPAR Online",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "entity": {
+    "todo": {
+      "shopping_list": {
+        "name": "Shopping list"
+      },
+      "cart": {
+        "name": "Cart"
+      }
+    }
+  },
+  "services": {
+    "search_products": {
+      "name": "Search products",
+      "description": "Search for products in the SPAR Online store.",
+      "fields": {
+        "query": {
+          "name": "Search query",
+          "description": "Product name or keyword to search for."
+        },
+        "max_results": {
+          "name": "Max results",
+          "description": "Maximum number of results to return."
+        }
+      }
+    }
+  }
+}

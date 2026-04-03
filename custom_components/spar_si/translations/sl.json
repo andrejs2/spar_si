@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Poveži se s SPAR Online",
+        "description": "Vnesite poverilnice za online.spar.si.",
+        "data": {
+          "email": "E-pošta",
+          "password": "Geslo",
+          "store_id": "ID trgovine"
+        },
+        "data_description": {
+          "store_id": "Pustite privzeto (4) za Ljubljana Interspar."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ponovna prijava v SPAR Online",
+        "description": "Vaša seja je potekla. Vnesite geslo znova.",
+        "data": {
+          "password": "Geslo"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Napačna e-pošta ali geslo",
+      "cannot_connect": "Ni mogoče vzpostaviti povezave s SPAR Online",
+      "unknown": "Prišlo je do nepričakovane napake"
+    },
+    "abort": {
+      "already_configured": "Ta račun je že nastavljen",
+      "reauth_successful": "Ponovna prijava uspešna"
+    }
+  },
+  "entity": {
+    "todo": {
+      "shopping_list": {
+        "name": "Nakupovalni seznam"
+      },
+      "cart": {
+        "name": "Košarica"
+      }
+    }
+  },
+  "services": {
+    "search_products": {
+      "name": "Iskanje izdelkov",
+      "description": "Poišči izdelke v spletni trgovini SPAR Online.",
+      "fields": {
+        "query": {
+          "name": "Iskalni niz",
+          "description": "Ime izdelka ali ključna beseda za iskanje."
+        },
+        "max_results": {
+          "name": "Največ zadetkov",
+          "description": "Največje število vrnjenih zadetkov."
+        }
+      }
+    }
+  }
+}
