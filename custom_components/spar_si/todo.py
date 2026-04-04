@@ -11,11 +11,12 @@ from homeassistant.components.todo import (
     TodoListEntityFeature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import SparCartItem
+from .api import SparApiError, SparAuthError, SparCartItem, SparConnectionError
 from .const import DOMAIN
 from .coordinator import SparConfigEntry, SparCoordinator
 from .store import SparShoppingListStore
@@ -218,19 +219,35 @@ class SparCartEntity(
 
         query, quantity = self._parse_item_input(item.summary)
 
-        products = await self.coordinator.client.async_search_products(
-            query=query, page_size=1
-        )
+        try:
+            products = await self.coordinator.client.async_search_products(
+                query=query, page_size=1
+            )
+        except (SparApiError, SparAuthError, SparConnectionError) as err:
+            _LOGGER.error("Failed to search for '%s': %s", query, err)
+            raise HomeAssistantError(
+                f"Iskanje izdelka '{query}' ni uspelo: {err}"
+            ) from err
+
         if not products:
             _LOGGER.warning("No product found for: %s", query)
-            return
+            raise HomeAssistantError(
+                f"Izdelek '{query}' ni bil najden v SPAR Online"
+            )
 
         product = products[0]
-        await self.coordinator.client.async_add_to_cart(
-            reference=product.sku,
-            unit=product.unit,
-            unit_quantity=quantity,
-        )
+        try:
+            await self.coordinator.client.async_add_to_cart(
+                reference=product.sku,
+                unit=product.unit,
+                unit_quantity=quantity,
+            )
+        except (SparApiError, SparAuthError, SparConnectionError) as err:
+            _LOGGER.error("Failed to add '%s' to cart: %s", product.name, err)
+            raise HomeAssistantError(
+                f"Dodajanje '{product.name}' v košarico ni uspelo: {err}"
+            ) from err
+
         await self.coordinator.async_request_refresh()
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
@@ -242,29 +259,40 @@ class SparCartEntity(
         if not item.uid:
             return
 
-        if item.status == TodoItemStatus.COMPLETED:
-            await self.coordinator.client.async_remove_from_cart(
-                product_id=item.uid
-            )
-            await self.coordinator.async_request_refresh()
-            return
-
-        # Check if summary contains a quantity update
-        if item.summary:
-            _, quantity = self._parse_item_input(item.summary)
-            if quantity != 1.0:
-                await self.coordinator.client.async_update_cart_item(
-                    product_id=item.uid, unit_quantity=quantity
+        try:
+            if item.status == TodoItemStatus.COMPLETED:
+                await self.coordinator.client.async_remove_from_cart(
+                    product_id=item.uid
                 )
-        await self.coordinator.async_request_refresh()
+                await self.coordinator.async_request_refresh()
+                return
+
+            if item.summary:
+                _, quantity = self._parse_item_input(item.summary)
+                if quantity != 1.0:
+                    await self.coordinator.client.async_update_cart_item(
+                        product_id=item.uid, unit_quantity=quantity
+                    )
+            await self.coordinator.async_request_refresh()
+        except (SparApiError, SparAuthError, SparConnectionError) as err:
+            _LOGGER.error("Failed to update cart item: %s", err)
+            raise HomeAssistantError(
+                f"Posodobitev košarice ni uspela: {err}"
+            ) from err
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Remove products from the cart."""
-        for product_id in uids:
-            await self.coordinator.client.async_remove_from_cart(
-                product_id=product_id
-            )
-        await self.coordinator.async_request_refresh()
+        try:
+            for product_id in uids:
+                await self.coordinator.client.async_remove_from_cart(
+                    product_id=product_id
+                )
+            await self.coordinator.async_request_refresh()
+        except (SparApiError, SparAuthError, SparConnectionError) as err:
+            _LOGGER.error("Failed to remove from cart: %s", err)
+            raise HomeAssistantError(
+                f"Odstranjevanje iz košarice ni uspelo: {err}"
+            ) from err
 
     @staticmethod
     def _parse_item_input(text: str) -> tuple[str, float]:
