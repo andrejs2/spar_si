@@ -1,16 +1,111 @@
 search_products:
+  name: Search products
+  description: >-
+    Search for products in the SPAR Online store by name.
+    Returns matching products with SKU, name, price, unit, brand, and availability.
+    Also returns the user's saved preference for this search term if one exists.
+    Use this when the user asks to add a grocery item - search first, then let
+    the user choose, then call add_to_cart with the chosen SKU.
   fields:
     query:
+      name: Search query
+      description: >-
+        Product name or keyword to search for in Slovenian
+        (e.g., "kruh", "mleko", "jogurt naravni").
       required: true
-      example: "mleko"
+      example: "kruh"
       selector:
         text:
     max_results:
+      name: Max results
+      description: Maximum number of products to return (1-50).
       required: false
-      default: 10
+      default: 5
       example: 5
       selector:
         number:
           min: 1
           max: 50
           mode: box
+
+add_to_cart:
+  name: Add to cart
+  description: >-
+    Add a specific product to the SPAR Online shopping cart by its SKU.
+    Use this after the user has chosen a product from search_products results.
+    Provide the SKU from the search results. Optionally provide the original
+    search_term to save the user's preference for future suggestions.
+    The preference is saved so next time the user searches for the same term,
+    their preferred product appears first.
+  fields:
+    sku:
+      name: SKU
+      description: >-
+        Product SKU (reference code) from search_products results.
+      required: true
+      example: "371991"
+      selector:
+        text:
+    quantity:
+      name: Quantity
+      description: How many units to add.
+      required: false
+      default: 1.0
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 200
+          step: 1
+          mode: box
+    unit:
+      name: Unit
+      description: >-
+        Unit type - usually "KOS" (piece) or "KG" (kilogram).
+        Use the unit from search_products results.
+      required: false
+      default: "KOS"
+      example: "KOS"
+      selector:
+        text:
+    search_term:
+      name: Search term
+      description: >-
+        The original search term the user used (e.g., "kruh").
+        If provided, saves the user's choice as a preference for this term.
+      required: false
+      example: "kruh"
+      selector:
+        text:
+
+remove_from_cart:
+  name: Remove from cart
+  description: >-
+    Remove a product from the SPAR Online shopping cart.
+    Use the product_id (uid) from get_cart results.
+  fields:
+    product_id:
+      name: Product ID
+      description: >-
+        The product ID (UUID) from the cart. Get this from get_cart results.
+      required: true
+      example: "e96be07f-9f89-431b-bb84-76f74dc7d25b"
+      selector:
+        text:
+
+get_cart:
+  name: Get cart
+  description: >-
+    Get the current contents of the SPAR Online shopping cart.
+    Returns all items with names, quantities, prices, and product IDs.
+    Use this when the user asks what's in their cart or wants to review
+    their order before checkout.
+
+get_preferences:
+  name: Get preferences
+  description: >-
+    Get the user's saved product preferences. Returns a map of search terms
+    to preferred products (SKU, name, price, times chosen).
+    Use this to suggest previously chosen products when the user searches
+    for the same term again. For example, if the user previously chose
+    "KRUH HRIBOVC BELI" when searching for "kruh", suggest that first.

@@ -48,13 +48,53 @@
       "fields": {
         "query": {
           "name": "Iskalni niz",
-          "description": "Ime izdelka ali ključna beseda za iskanje."
+          "description": "Ime izdelka ali ključna beseda."
         },
         "max_results": {
           "name": "Največ zadetkov",
           "description": "Največje število vrnjenih zadetkov."
         }
       }
+    },
+    "add_to_cart": {
+      "name": "Dodaj v košarico",
+      "description": "Dodaj izdelek v SPAR Online košarico po SKU.",
+      "fields": {
+        "sku": {
+          "name": "SKU",
+          "description": "Referenčna koda izdelka iz rezultatov iskanja."
+        },
+        "quantity": {
+          "name": "Količina",
+          "description": "Število enot za dodati."
+        },
+        "unit": {
+          "name": "Enota",
+          "description": "Tip enote (KOS ali KG)."
+        },
+        "search_term": {
+          "name": "Iskalni izraz",
+          "description": "Prvotni iskalni izraz za shranjevanje preference."
+        }
+      }
+    },
+    "remove_from_cart": {
+      "name": "Odstrani iz košarice",
+      "description": "Odstrani izdelek iz košarice.",
+      "fields": {
+        "product_id": {
+          "name": "ID izdelka",
+          "description": "UUID izdelka iz košarice."
+        }
+      }
+    },
+    "get_cart": {
+      "name": "Pridobi košarico",
+      "description": "Pridobi trenutno vsebino košarice z vsemi izdelki in cenami."
+    },
+    "get_preferences": {
+      "name": "Pridobi preference",
+      "description": "Pridobi shranjene preference izdelkov za iskalne izraze."
     }
   }
 }

@@ -13,10 +13,14 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import SparApiClient, SparAuthError, SparConnectionError
 from .const import CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE, DOMAIN
 from .coordinator import SparConfigEntry, SparCoordinator
+from .store import SparPreferenceStore
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.TODO]
+
+# Key for storing preference store in hass.data
+PREF_STORE_KEY = f"{DOMAIN}_preferences"
 
 
 async def async_setup_entry(
@@ -47,6 +51,11 @@ async def async_setup_entry(
 
     entry.runtime_data = coordinator
 
+    # Load preference store
+    pref_store = SparPreferenceStore(hass, entry.entry_id)
+    await pref_store.async_load()
+    hass.data.setdefault(DOMAIN, {})[PREF_STORE_KEY] = pref_store
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _register_services(hass)
@@ -58,27 +67,60 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: SparConfigEntry
 ) -> bool:
     """Unload a config entry."""
+    hass.data.get(DOMAIN, {}).pop(PREF_STORE_KEY, None)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
+def _get_coordinator(hass: HomeAssistant) -> SparCoordinator | None:
+    """Get the first available coordinator."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        return None
+    return entries[0].runtime_data
+
+
+def _get_pref_store(hass: HomeAssistant) -> SparPreferenceStore | None:
+    """Get the preference store."""
+    return hass.data.get(DOMAIN, {}).get(PREF_STORE_KEY)
+
+
 def _register_services(hass: HomeAssistant) -> None:
-    """Register integration services."""
+    """Register integration services for AI voice assistant."""
     if hass.services.has_service(DOMAIN, "search_products"):
-        return  # Already registered
+        return
 
+    # ─── search_products ───────────────────────────────────────
     async def handle_search_products(call: ServiceCall) -> dict:
-        """Handle the search_products service call."""
+        """Search for products in SPAR Online store.
+
+        Use this to find products by name. Returns a list of matching
+        products with SKU, name, price, and availability.
+        The preference field shows if the user has previously chosen
+        this product for the given search term.
+        """
         query = call.data["query"]
-        max_results = call.data.get("max_results", 10)
+        max_results = call.data.get("max_results", 5)
 
-        entries = hass.config_entries.async_entries(DOMAIN)
-        if not entries:
-            return {"products": []}
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"products": [], "preference": None}
 
-        coordinator: SparCoordinator = entries[0].runtime_data
         products = await coordinator.client.async_search_products(
             query=query, page_size=max_results
         )
+
+        # Check for saved preference
+        pref_store = _get_pref_store(hass)
+        preference = None
+        if pref_store:
+            pref = pref_store.get_preference(query)
+            if pref:
+                preference = {
+                    "sku": pref["sku"],
+                    "name": pref["name"],
+                    "price": pref["price"],
+                    "times_chosen": pref["count"],
+                }
 
         return {
             "products": [
@@ -89,10 +131,10 @@ def _register_services(hass: HomeAssistant) -> None:
                     "unit": p.unit,
                     "brand": p.brand,
                     "is_available": p.is_available,
-                    "image_url": p.image_url,
                 }
                 for p in products
-            ]
+            ],
+            "preference": preference,
         }
 
     hass.services.async_register(
@@ -102,10 +144,157 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Required("query"): str,
-                vol.Optional("max_results", default=10): vol.All(
+                vol.Optional("max_results", default=5): vol.All(
                     int, vol.Range(min=1, max=50)
                 ),
             }
         ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── add_to_cart ───────────────────────────────────────────
+    async def handle_add_to_cart(call: ServiceCall) -> dict:
+        """Add a product to the SPAR Online cart by SKU.
+
+        Use this after the user has chosen a specific product from
+        search results. Provide the SKU (reference) from search_products.
+        Also records the user's preference for future suggestions.
+        """
+        sku = call.data["sku"]
+        quantity = call.data.get("quantity", 1.0)
+        unit = call.data.get("unit", "KOS")
+        search_term = call.data.get("search_term")
+
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"success": False, "error": "Integration not configured"}
+
+        cart = await coordinator.client.async_add_to_cart(
+            reference=sku, unit=unit, unit_quantity=quantity
+        )
+
+        # Save preference if search_term provided
+        if search_term:
+            pref_store = _get_pref_store(hass)
+            if pref_store:
+                # Find the product name from cart
+                product_name = sku
+                price = 0.0
+                for item in cart.items:
+                    if item.reference == sku:
+                        product_name = item.name
+                        price = item.price_total
+                        break
+                await pref_store.async_record_choice(
+                    search_term, sku, product_name, price
+                )
+
+        await coordinator.async_request_refresh()
+
+        return {
+            "success": True,
+            "cart_items": cart.item_count,
+            "added": sku,
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        "add_to_cart",
+        handle_add_to_cart,
+        schema=vol.Schema(
+            {
+                vol.Required("sku"): str,
+                vol.Optional("quantity", default=1.0): vol.Coerce(float),
+                vol.Optional("unit", default="KOS"): str,
+                vol.Optional("search_term"): str,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── remove_from_cart ──────────────────────────────────────
+    async def handle_remove_from_cart(call: ServiceCall) -> dict:
+        """Remove a product from the SPAR Online cart.
+
+        Provide the product_id (uid) from the cart items.
+        """
+        product_id = call.data["product_id"]
+
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"success": False, "error": "Integration not configured"}
+
+        cart = await coordinator.client.async_remove_from_cart(
+            product_id=product_id
+        )
+        await coordinator.async_request_refresh()
+
+        return {"success": True, "cart_items": cart.item_count}
+
+    hass.services.async_register(
+        DOMAIN,
+        "remove_from_cart",
+        handle_remove_from_cart,
+        schema=vol.Schema(
+            {
+                vol.Required("product_id"): str,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── get_cart ──────────────────────────────────────────────
+    async def handle_get_cart(call: ServiceCall) -> dict:
+        """Get the current contents of the SPAR Online cart.
+
+        Returns all items in the cart with names, quantities, and prices.
+        """
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"items": [], "item_count": 0}
+
+        cart = await coordinator.client.async_get_cart()
+
+        return {
+            "items": [
+                {
+                    "product_id": item.product_id,
+                    "name": item.name,
+                    "reference": item.reference,
+                    "quantity": item.unit_quantity,
+                    "unit": item.unit,
+                    "price": item.price_total,
+                }
+                for item in cart.items
+            ],
+            "item_count": cart.item_count,
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_cart",
+        handle_get_cart,
+        schema=vol.Schema({}),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── get_preferences ───────────────────────────────────────
+    async def handle_get_preferences(call: ServiceCall) -> dict:
+        """Get saved product preferences.
+
+        Returns a map of search terms to preferred products.
+        Use this to know what the user typically buys.
+        """
+        pref_store = _get_pref_store(hass)
+        if not pref_store:
+            return {"preferences": {}}
+
+        return {"preferences": pref_store.get_all_preferences()}
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_preferences",
+        handle_get_preferences,
+        schema=vol.Schema({}),
         supports_response=SupportsResponse.ONLY,
     )

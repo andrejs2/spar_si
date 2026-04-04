@@ -44,17 +44,57 @@
   "services": {
     "search_products": {
       "name": "Search products",
-      "description": "Search for products in the SPAR Online store.",
+      "description": "Search for grocery products in SPAR Online by name.",
       "fields": {
         "query": {
           "name": "Search query",
-          "description": "Product name or keyword to search for."
+          "description": "Product name or keyword."
         },
         "max_results": {
           "name": "Max results",
-          "description": "Maximum number of results to return."
+          "description": "Maximum number of results."
         }
       }
+    },
+    "add_to_cart": {
+      "name": "Add to cart",
+      "description": "Add a product to the SPAR Online cart by SKU.",
+      "fields": {
+        "sku": {
+          "name": "SKU",
+          "description": "Product reference code from search results."
+        },
+        "quantity": {
+          "name": "Quantity",
+          "description": "Number of units to add."
+        },
+        "unit": {
+          "name": "Unit",
+          "description": "Unit type (KOS or KG)."
+        },
+        "search_term": {
+          "name": "Search term",
+          "description": "Original search term to save preference."
+        }
+      }
+    },
+    "remove_from_cart": {
+      "name": "Remove from cart",
+      "description": "Remove a product from the cart.",
+      "fields": {
+        "product_id": {
+          "name": "Product ID",
+          "description": "Product UUID from the cart."
+        }
+      }
+    },
+    "get_cart": {
+      "name": "Get cart",
+      "description": "Get current cart contents with all items and prices."
+    },
+    "get_preferences": {
+      "name": "Get preferences",
+      "description": "Get saved product preferences for search terms."
     }
   }
 }
