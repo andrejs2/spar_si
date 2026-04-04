@@ -69,13 +69,22 @@ class SparCartItem:
     image_url: str | None = None
 
 
+CART_MODIFIABLE_STATUSES = {"CREATED", "ACTIVE", "PROCESSING"}
+
+
 @dataclass
 class SparCart:
     """The SPAR Online shopping cart."""
 
     cart_id: str
+    status: str = ""
     items: list[SparCartItem] = field(default_factory=list)
     item_count: int = 0
+
+    @property
+    def is_modifiable(self) -> bool:
+        """Check if the cart can be modified (add/remove items)."""
+        return self.status in CART_MODIFIABLE_STATUSES or not self.status
 
 
 @dataclass
@@ -130,6 +139,7 @@ class SparApiClient:
         self._token: str | None = None
         self._customer: SparCustomer | None = None
         self._cart_id: str | None = None
+        self._cart_status: str | None = None
 
     @property
     def customer(self) -> SparCustomer | None:
@@ -472,6 +482,12 @@ class SparApiClient:
         if not self._cart_id:
             await self.async_get_or_create_cart()
 
+        if self._cart_status and self._cart_status not in CART_MODIFIABLE_STATUSES:
+            raise SparApiError(
+                f"Košarica je v statusu '{self._cart_status}' in je ni mogoče spreminjati. "
+                "Odpri online.spar.si in dodaj artikel da ustvariš novo košarico."
+            )
+
         gql = f"""
         mutation AddProductToEcommerceCart($input: AddProductToCartInput!) {{
             addProductToEcommerceCart(addProductToCartInput: $input) {{
@@ -580,6 +596,7 @@ class SparApiClient:
         """Parse cart data from API response."""
         cart_id = data.get("id", "")
         self._cart_id = cart_id
+        self._cart_status = data.get("status", "")
 
         items = []
         for item_data in data.get("products", []):
@@ -601,6 +618,7 @@ class SparApiClient:
 
         return SparCart(
             cart_id=cart_id,
+            status=data.get("status", ""),
             items=items,
             item_count=len(items),
         )

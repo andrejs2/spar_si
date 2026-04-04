@@ -180,6 +180,16 @@ class SparCartEntity(
         )
 
     @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return extra state attributes."""
+        if self.coordinator.data is None:
+            return None
+        return {
+            "cart_status": self.coordinator.data.status,
+            "cart_id": self.coordinator.data.cart_id,
+        }
+
+    @property
     def todo_items(self) -> list[TodoItem] | None:
         """Return cart items as todo items."""
         if self.coordinator.data is None:

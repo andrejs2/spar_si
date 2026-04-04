@@ -1,0 +1,94 @@
+{
+  "results": [
+    {
+      "sentence": "dodaj kruh na SPAR",
+      "language": "sl",
+      "result": {
+        "intent": {
+          "name": "HassListAddItem"
+        },
+        "slots": {
+          "item": "kruh"
+        },
+        "details": {
+          "item": {
+            "name": "item",
+            "value": "kruh",
+            "text": "kruh"
+          }
+        },
+        "targets": {},
+        "match": false,
+        "sentence_template": "[dodaj| daj] <item> [h|k|na] <my_list>",
+        "unmatched_slots": {
+          "name": "SPAR"
+        },
+        "fuzzy_match": false
+      }
+    },
+    {
+      "sentence": "dodaj kruh na SPAR Košarica",
+      "language": "sl",
+      "result": {
+        "intent": {
+          "name": "HassListAddItem"
+        },
+        "slots": {
+          "item": "kruh",
+          "name": "SPAR Košarica"
+        },
+        "details": {
+          "item": {
+            "name": "item",
+            "value": "kruh",
+            "text": "kruh"
+          },
+          "name": {
+            "name": "name",
+            "value": "SPAR Košarica",
+            "text": "SPAR Košarica"
+          }
+        },
+        "targets": {
+          "todo.spar_kosarica": {
+            "matched": true
+          }
+        },
+        "match": true,
+        "sentence_template": "(dodaj| daj) <item> na [seznam|listo] [za|na] <my_list>",
+        "unmatched_slots": {},
+        "fuzzy_match": false
+      }
+    },
+    {
+      "sentence": "dodaj kruh na šparov seznam",
+      "language": "sl",
+      "result": {
+        "intent": {
+          "name": "HassListAddItem"
+        },
+        "slots": {
+          "item": "kruh",
+          "name": "šparov seznam"
+        },
+        "details": {
+          "item": {
+            "name": "item",
+            "value": "kruh",
+            "text": "kruh"
+          },
+          "name": {
+            "name": "name",
+            "value": "šparov seznam",
+            "text": "šparov seznam"
+          }
+        },
+        "targets": {},
+        "match": true,
+        "sentence_template": "(dodaj| daj) <item> na [seznam|listo] [za|na] <my_list>",
+        "unmatched_slots": {},
+        "fuzzy_match": false
+      }
+    }
+  ]
+}
