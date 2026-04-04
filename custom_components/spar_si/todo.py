@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import SparCartItem
 from .const import DOMAIN
 from .coordinator import SparConfigEntry, SparCoordinator
+from .store import SparShoppingListStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,9 +31,12 @@ async def async_setup_entry(
     """Set up SPAR todo entities."""
     coordinator: SparCoordinator = entry.runtime_data
 
+    store = SparShoppingListStore(hass, entry.entry_id)
+    saved_items = await store.async_load()
+
     async_add_entities(
         [
-            SparShoppingListEntity(coordinator, entry),
+            SparShoppingListEntity(coordinator, entry, store, saved_items),
             SparCartEntity(coordinator, entry),
         ]
     )
@@ -43,7 +47,7 @@ class SparShoppingListEntity(TodoListEntity):
 
     This is a local-only list where users add items by name
     (e.g., via voice assistant). Items can then be matched to
-    SPAR products and moved to the cart.
+    SPAR products and moved to the cart. Persists across restarts.
     """
 
     _attr_has_entity_name = True
@@ -59,10 +63,13 @@ class SparShoppingListEntity(TodoListEntity):
         self,
         coordinator: SparCoordinator,
         entry: SparConfigEntry,
+        store: SparShoppingListStore,
+        saved_items: list[dict],
     ) -> None:
         """Initialize the shopping list."""
         self._entry = entry
         self._coordinator = coordinator
+        self._store = store
         self._attr_unique_id = f"{entry.entry_id}_shopping_list"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -70,12 +77,35 @@ class SparShoppingListEntity(TodoListEntity):
             manufacturer="SPAR Slovenija",
             entry_type=None,
         )
-        self._items: list[TodoItem] = []
+        # Restore items from storage
+        self._items: list[TodoItem] = [
+            TodoItem(
+                uid=item["uid"],
+                summary=item["summary"],
+                status=TodoItemStatus(item.get("status", "needs_action")),
+                description=item.get("description"),
+            )
+            for item in saved_items
+        ]
 
     @property
     def todo_items(self) -> list[TodoItem]:
         """Return the shopping list items."""
         return self._items
+
+    async def _async_save(self) -> None:
+        """Persist items to storage."""
+        await self._store.async_save(
+            [
+                {
+                    "uid": item.uid,
+                    "summary": item.summary,
+                    "status": item.status.value if item.status else "needs_action",
+                    "description": item.description,
+                }
+                for item in self._items
+            ]
+        )
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         """Add an item to the shopping list."""
@@ -87,6 +117,7 @@ class SparShoppingListEntity(TodoListEntity):
         )
         self._items.append(new_item)
         self.async_write_ha_state()
+        await self._async_save()
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Update a shopping list item."""
@@ -102,12 +133,14 @@ class SparShoppingListEntity(TodoListEntity):
                 )
                 break
         self.async_write_ha_state()
+        await self._async_save()
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Delete items from the shopping list."""
         uid_set = set(uids)
         self._items = [i for i in self._items if i.uid not in uid_set]
         self.async_write_ha_state()
+        await self._async_save()
 
 
 class SparCartEntity(
@@ -117,6 +150,7 @@ class SparCartEntity(
 
     Each item represents a product in the SPAR Online cart.
     Adding/removing items here directly modifies the online cart.
+    The summary format is "Product Name (Qty UNIT)".
     """
 
     _attr_has_entity_name = True
@@ -171,25 +205,38 @@ class SparCartEntity(
         )
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Add a product to the SPAR cart by searching for it."""
+        """Add a product to the SPAR cart.
+
+        Accepts either:
+        - Plain text like "mleko" -> searches and adds first result
+        - "mleko 3" or "3x mleko" -> searches and adds with quantity
+        """
         if not item.summary:
             return
 
+        query, quantity = self._parse_item_input(item.summary)
+
         products = await self.coordinator.client.async_search_products(
-            query=item.summary, page_size=1
+            query=query, page_size=1
         )
         if not products:
-            _LOGGER.warning("No product found for: %s", item.summary)
+            _LOGGER.warning("No product found for: %s", query)
             return
 
         product = products[0]
         await self.coordinator.client.async_add_to_cart(
-            reference=product.sku, unit=product.unit, unit_quantity=1.0
+            reference=product.sku,
+            unit=product.unit,
+            unit_quantity=quantity,
         )
         await self.coordinator.async_request_refresh()
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
-        """Update a cart item (mark complete = remove from cart)."""
+        """Update a cart item.
+
+        - Mark as complete -> removes from cart
+        - Change summary -> try to parse new quantity
+        """
         if not item.uid:
             return
 
@@ -197,6 +244,16 @@ class SparCartEntity(
             await self.coordinator.client.async_remove_from_cart(
                 product_id=item.uid
             )
+            await self.coordinator.async_request_refresh()
+            return
+
+        # Check if summary contains a quantity update
+        if item.summary:
+            _, quantity = self._parse_item_input(item.summary)
+            if quantity != 1.0:
+                await self.coordinator.client.async_update_cart_item(
+                    product_id=item.uid, unit_quantity=quantity
+                )
         await self.coordinator.async_request_refresh()
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
@@ -206,3 +263,29 @@ class SparCartEntity(
                 product_id=product_id
             )
         await self.coordinator.async_request_refresh()
+
+    @staticmethod
+    def _parse_item_input(text: str) -> tuple[str, float]:
+        """Parse item input to extract product name and quantity.
+
+        Supports formats:
+        - "mleko" -> ("mleko", 1.0)
+        - "mleko 3" -> ("mleko", 3.0)
+        - "3x mleko" -> ("mleko", 3.0)
+        - "3 x mleko" -> ("mleko", 3.0)
+        """
+        import re
+
+        text = text.strip()
+
+        # Match "3x mleko" or "3 x mleko"
+        match = re.match(r"^(\d+(?:\.\d+)?)\s*x\s+(.+)$", text, re.IGNORECASE)
+        if match:
+            return match.group(2).strip(), float(match.group(1))
+
+        # Match "mleko 3"
+        match = re.match(r"^(.+?)\s+(\d+(?:\.\d+)?)$", text)
+        if match:
+            return match.group(1).strip(), float(match.group(2))
+
+        return text, 1.0
