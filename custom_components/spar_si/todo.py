@@ -52,6 +52,7 @@ class SparShoppingListEntity(TodoListEntity):
 
     _attr_has_entity_name = True
     _attr_translation_key = "shopping_list"
+    _attr_icon = "mdi:clipboard-list-outline"
     _attr_supported_features = (
         TodoListEntityFeature.CREATE_TODO_ITEM
         | TodoListEntityFeature.DELETE_TODO_ITEM
@@ -155,6 +156,7 @@ class SparCartEntity(
 
     _attr_has_entity_name = True
     _attr_translation_key = "cart"
+    _attr_icon = "mdi:cart"
     _attr_supported_features = (
         TodoListEntityFeature.CREATE_TODO_ITEM
         | TodoListEntityFeature.DELETE_TODO_ITEM
