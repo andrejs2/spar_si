@@ -15,6 +15,8 @@ from homeassistant.helpers.update_coordinator import (
 from .api import SparApiClient, SparAuthError, SparCart, SparConnectionError
 from .const import CART_UPDATE_INTERVAL, DOMAIN
 
+DEFAULT_UPDATE_INTERVAL_MIN = 5
+
 _LOGGER = logging.getLogger(__name__)
 
 type SparConfigEntry = ConfigEntry[SparCoordinator]
@@ -32,12 +34,15 @@ class SparCoordinator(DataUpdateCoordinator[SparCart]):
         client: SparApiClient,
     ) -> None:
         """Initialize the coordinator."""
+        interval_min = config_entry.options.get(
+            "update_interval", DEFAULT_UPDATE_INTERVAL_MIN
+        )
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             config_entry=config_entry,
-            update_interval=timedelta(seconds=CART_UPDATE_INTERVAL),
+            update_interval=timedelta(minutes=interval_min),
             always_update=False,
         )
         self.client = client

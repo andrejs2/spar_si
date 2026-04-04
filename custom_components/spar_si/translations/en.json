@@ -13,6 +13,18 @@
           "store_reference": "Leave default (81701) for Ljubljana Interspar."
         }
       },
+      "reconfigure": {
+        "title": "Reconfigure SPAR Online",
+        "description": "Update your online.spar.si credentials or store.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "store_reference": "Store reference"
+        },
+        "data_description": {
+          "store_reference": "Leave default (81701) for Ljubljana Interspar."
+        }
+      },
       "reauth_confirm": {
         "title": "Re-authenticate with SPAR Online",
         "description": "Your session has expired. Please enter your password again.",
@@ -28,7 +40,18 @@
     },
     "abort": {
       "already_configured": "This account is already configured",
-      "reauth_successful": "Re-authentication successful"
+      "reauth_successful": "Re-authentication successful",
+      "reconfigure_successful": "Reconfiguration successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SPAR Online options",
+        "data": {
+          "update_interval": "Cart update interval (minutes)"
+        }
+      }
     }
   },
   "entity": {

@@ -13,6 +13,18 @@
           "store_reference": "Pustite privzeto (81701) za Ljubljana Interspar."
         }
       },
+      "reconfigure": {
+        "title": "Ponovna nastavitev SPAR Online",
+        "description": "Posodobite poverilnice ali trgovino za online.spar.si.",
+        "data": {
+          "email": "E-pošta",
+          "password": "Geslo",
+          "store_reference": "Referenca trgovine"
+        },
+        "data_description": {
+          "store_reference": "Pustite privzeto (81701) za Ljubljana Interspar."
+        }
+      },
       "reauth_confirm": {
         "title": "Ponovna prijava v SPAR Online",
         "description": "Vaša seja je potekla. Vnesite geslo znova.",
@@ -28,7 +40,18 @@
     },
     "abort": {
       "already_configured": "Ta račun je že nastavljen",
-      "reauth_successful": "Ponovna prijava uspešna"
+      "reauth_successful": "Ponovna prijava uspešna",
+      "reconfigure_successful": "Ponovna nastavitev uspešna"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavitve SPAR Online",
+        "data": {
+          "update_interval": "Interval osveževanja košarice (minute)"
+        }
+      }
     }
   },
   "entity": {
