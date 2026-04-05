@@ -444,11 +444,57 @@ class SparApiClient:
         return self._parse_cart(cart_data)
 
     async def async_get_cart(self) -> SparCart:
-        """Get the current cart."""
+        """Get the current active cart.
+
+        Always fetches the active cart via getActiveEcommerceCart so that
+        if a new cart was created on the website, we pick it up automatically.
+        Falls back to fetching by cached cart_id if the active cart query fails.
+        """
         await self._ensure_authenticated()
 
+        gql_active = f"""
+        query GetActiveEcommerceCart($input: GetActiveEcommerceCartInput!) {{
+            getActiveEcommerceCart(getActiveCartInput: $input) {{
+                {CART_FIELDS}
+            }}
+        }}
+        """
+        variables_active = {
+            "input": {
+                "storeReference": self._store_reference,
+                "operationalModel": "DELIVERY",
+            }
+        }
+
+        try:
+            data = await self._request_v3(
+                gql_active, variables_active, "GetActiveEcommerceCart"
+            )
+            cart_data = data.get("getActiveEcommerceCart")
+            if cart_data:
+                cart = self._parse_cart(cart_data)
+                if cart.cart_id != self._cart_id:
+                    _LOGGER.debug(
+                        "Active cart changed: %s -> %s (status: %s)",
+                        self._cart_id,
+                        cart.cart_id,
+                        cart.status,
+                    )
+                return cart
+        except SparAuthError:
+            await self.async_authenticate()
+            data = await self._request_v3(
+                gql_active, variables_active, "GetActiveEcommerceCart"
+            )
+            cart_data = data.get("getActiveEcommerceCart")
+            if cart_data:
+                return self._parse_cart(cart_data)
+        except SparApiError:
+            _LOGGER.debug("getActiveEcommerceCart failed, trying by cart_id")
+
+        # Fallback: fetch by cached cart_id
         if not self._cart_id:
-            return await self.async_get_or_create_cart()
+            return SparCart(cart_id="", status="UNKNOWN")
 
         gql = f"""
         query GetEcommerceCart($cartId: ID!) {{
