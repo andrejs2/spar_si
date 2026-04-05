@@ -111,9 +111,24 @@ async def _do_sync_list_to_cart(
     if not items:
         return results
 
-    if coordinator.data and not coordinator.data.is_modifiable:
+    # Fetch fresh cart state before syncing
+    try:
+        cart = await coordinator.client.async_get_cart()
+        _LOGGER.debug(
+            "Sync: cart_id=%s, status=%s, items=%d",
+            cart.cart_id,
+            cart.status,
+            cart.item_count,
+        )
+    except (SparApiError, SparAuthError, SparConnectionError) as err:
         raise SparApiError(
-            f"Košarica je v statusu '{coordinator.data.status}' in je ni mogoče spreminjati."
+            f"Ni mogoče pridobiti košarice: {err}"
+        ) from err
+
+    if not cart.is_modifiable:
+        raise SparApiError(
+            f"Košarica je v statusu '{cart.status}' in je ni mogoče spreminjati. "
+            "Odpri online.spar.si in dodaj artikel, da se ustvari nova košarica."
         )
 
     for item in items:
@@ -139,6 +154,13 @@ async def _do_sync_list_to_cart(
                     if preferred:
                         product = preferred
 
+            _LOGGER.debug(
+                "Sync: adding '%s' -> sku=%s, unit=%s, cart_id=%s",
+                query,
+                product.sku,
+                product.unit,
+                coordinator.client._cart_id,
+            )
             await coordinator.client.async_add_to_cart(
                 reference=product.sku,
                 unit=product.unit,

@@ -559,6 +559,25 @@ class SparApiClient:
             data = await self._request_v3(
                 gql, variables, "AddProductToEcommerceCart"
             )
+        except SparApiError as err:
+            if "400" in str(err):
+                # Cart ID may be stale — refresh and retry once
+                _LOGGER.warning(
+                    "Add to cart failed (400), refreshing cart and retrying: %s",
+                    err,
+                )
+                await self.async_get_cart()
+                if self._cart_status and self._cart_status not in CART_MODIFIABLE_STATUSES:
+                    raise SparApiError(
+                        f"Košarica je v statusu '{self._cart_status}' in je ni mogoče spreminjati. "
+                        "Odpri online.spar.si in dodaj artikel da ustvariš novo košarico."
+                    ) from err
+                variables["input"]["cartId"] = self._cart_id
+                data = await self._request_v3(
+                    gql, variables, "AddProductToEcommerceCart"
+                )
+            else:
+                raise
 
         cart_data = data.get("addProductToEcommerceCart", {})
         return self._parse_cart(cart_data)
