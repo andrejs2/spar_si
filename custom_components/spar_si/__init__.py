@@ -143,22 +143,36 @@ async def _do_sync_list_to_cart(
                 results["not_found"].append(query)
                 continue
 
+            # Filter to available products only
+            available = [p for p in products if p.is_available]
+            if not available:
+                results["not_found"].append(query)
+                _LOGGER.info(
+                    "Sync: '%s' found %d products but none available",
+                    query,
+                    len(products),
+                )
+                continue
+
             # Prefer previously chosen product if available
-            product = products[0]
+            product = available[0]
             if pref_store:
                 pref = pref_store.get_preference(query)
                 if pref:
                     preferred = next(
-                        (p for p in products if p.sku == pref["sku"]), None
+                        (p for p in available if p.sku == pref["sku"]), None
                     )
                     if preferred:
                         product = preferred
 
             _LOGGER.debug(
-                "Sync: adding '%s' -> sku=%s, unit=%s, cart_id=%s",
+                "Sync: adding '%s' -> sku=%s, name=%s, unit=%s, "
+                "stock=%d, cart_id=%s",
                 query,
                 product.sku,
+                product.name,
                 product.unit,
+                product.stock,
                 coordinator.client._cart_id,
             )
             await coordinator.client.async_add_to_cart(
@@ -166,7 +180,11 @@ async def _do_sync_list_to_cart(
                 unit=product.unit,
                 unit_quantity=1.0,
             )
-            results["added"].append({"name": query, "matched": product.name})
+            results["added"].append({
+                "name": query,
+                "matched": product.name,
+                "sku": product.sku,
+            })
 
             # Mark as completed on shopping list
             await shopping_list.async_update_todo_item(
@@ -177,13 +195,26 @@ async def _do_sync_list_to_cart(
                 )
             )
         except (SparApiError, SparAuthError, SparConnectionError) as err:
-            _LOGGER.error("Sync failed for '%s': %s", query, err)
-            results["errors"].append({"name": query, "error": str(err)})
+            _LOGGER.error(
+                "Sync failed for '%s' (sku=%s, unit=%s): %s",
+                query,
+                product.sku,
+                product.unit,
+                err,
+            )
+            results["errors"].append({
+                "name": query,
+                "sku": product.sku,
+                "matched": product.name,
+                "error": str(err),
+            })
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("Unexpected error syncing '%s'", query)
             results["errors"].append({"name": query, "error": str(err)})
 
     await coordinator.async_request_refresh()
+    results["cart_id"] = cart.cart_id
+    results["cart_status"] = cart.status
     return results
 
 
