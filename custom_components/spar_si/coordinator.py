@@ -46,11 +46,29 @@ class SparCoordinator(DataUpdateCoordinator[SparCart]):
             always_update=False,
         )
         self.client = client
+        self._last_cart_id: str | None = None
+        self.new_cart_detected: bool = False
 
     async def _async_update_data(self) -> SparCart:
         """Fetch cart data from SPAR Online."""
         try:
-            return await self.client.async_get_cart()
+            cart = await self.client.async_get_cart()
+            if (
+                self._last_cart_id
+                and cart.cart_id
+                and cart.cart_id != self._last_cart_id
+            ):
+                self.new_cart_detected = True
+                _LOGGER.info(
+                    "New SPAR cart detected: %s -> %s",
+                    self._last_cart_id,
+                    cart.cart_id,
+                )
+            else:
+                self.new_cart_detected = False
+            if cart.cart_id:
+                self._last_cart_id = cart.cart_id
+            return cart
         except SparAuthError as err:
             raise ConfigEntryAuthFailed(
                 "Authentication failed, please re-authenticate"

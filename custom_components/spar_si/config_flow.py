@@ -187,6 +187,7 @@ class SparSiConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_AUTO_SYNC = "auto_sync"
 DEFAULT_UPDATE_INTERVAL = 5  # minutes
 
 OPTIONS_SCHEMA = vol.Schema(
@@ -194,6 +195,7 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL
         ): vol.All(int, vol.Range(min=1, max=60)),
+        vol.Optional(CONF_AUTO_SYNC, default=False): bool,
     }
 )
 

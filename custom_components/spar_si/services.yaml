@@ -109,3 +109,16 @@ get_preferences:
     Use this to suggest previously chosen products when the user searches
     for the same term again. For example, if the user previously chose
     "KRUH HRIBOVC BELI" when searching for "kruh", suggest that first.
+
+sync_list_to_cart:
+  name: Sync shopping list to cart
+  description: >-
+    Sync all pending items from the local shopping list (Nakupovalni seznam)
+    to the SPAR Online cart. For each item on the list, searches for matching
+    products in SPAR, adds the best match to the cart, and marks the item as
+    completed on the shopping list. Items with no match are left on the list.
+    Uses saved preferences to choose the product the user previously selected
+    for the same search term. Returns a summary with added products, items
+    not found, and any errors. Call this after a new SPAR cart is created
+    (e.g., after a completed order) to quickly repopulate the cart with the
+    accumulated weekly shopping list.

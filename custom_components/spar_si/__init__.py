@@ -5,12 +5,13 @@ import logging
 
 import voluptuous as vol
 
+from homeassistant.components.todo import TodoItem, TodoItemStatus
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import SparApiClient, SparAuthError, SparConnectionError
+from .api import SparApiClient, SparApiError, SparAuthError, SparConnectionError
 from .const import CONF_STORE_REFERENCE, DEFAULT_STORE_REFERENCE, DOMAIN
 from .coordinator import SparConfigEntry, SparCoordinator
 from .store import SparPreferenceStore
@@ -59,6 +60,7 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _register_services(hass)
+    _register_auto_sync_listener(hass, entry, coordinator)
 
     return True
 
@@ -82,6 +84,121 @@ def _get_coordinator(hass: HomeAssistant) -> SparCoordinator | None:
 def _get_pref_store(hass: HomeAssistant) -> SparPreferenceStore | None:
     """Get the preference store."""
     return hass.data.get(DOMAIN, {}).get(PREF_STORE_KEY)
+
+
+def _get_shopping_list(hass: HomeAssistant, entry_id: str):
+    """Get the SparShoppingListEntity for the given entry."""
+    return hass.data.get(DOMAIN, {}).get(f"{entry_id}_shopping_list")
+
+
+async def _do_sync_list_to_cart(
+    coordinator: SparCoordinator,
+    pref_store: SparPreferenceStore | None,
+    shopping_list,
+) -> dict:
+    """Sync all NEEDS_ACTION items from shopping list to SPAR cart.
+
+    Returns: {added: [{name, matched}], not_found: [str], errors: [{name, error}]}
+    """
+    results: dict = {"added": [], "not_found": [], "errors": []}
+
+    items = [
+        item
+        for item in (shopping_list.todo_items or [])
+        if item.status == TodoItemStatus.NEEDS_ACTION
+    ]
+
+    if not items:
+        return results
+
+    if coordinator.data and not coordinator.data.is_modifiable:
+        raise SparApiError(
+            f"Košarica je v statusu '{coordinator.data.status}' in je ni mogoče spreminjati."
+        )
+
+    for item in items:
+        query = item.summary or ""
+        if not query:
+            continue
+        try:
+            products = await coordinator.client.async_search_products(
+                query=query, page_size=5
+            )
+            if not products:
+                results["not_found"].append(query)
+                continue
+
+            # Prefer previously chosen product if available
+            product = products[0]
+            if pref_store:
+                pref = pref_store.get_preference(query)
+                if pref:
+                    preferred = next(
+                        (p for p in products if p.sku == pref["sku"]), None
+                    )
+                    if preferred:
+                        product = preferred
+
+            await coordinator.client.async_add_to_cart(
+                reference=product.sku,
+                unit=product.unit,
+                unit_quantity=1.0,
+            )
+            results["added"].append({"name": query, "matched": product.name})
+
+            # Mark as completed on shopping list
+            await shopping_list.async_update_todo_item(
+                TodoItem(
+                    uid=item.uid,
+                    summary=item.summary,
+                    status=TodoItemStatus.COMPLETED,
+                )
+            )
+        except (SparApiError, SparAuthError, SparConnectionError) as err:
+            _LOGGER.error("Sync failed for '%s': %s", query, err)
+            results["errors"].append({"name": query, "error": str(err)})
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Unexpected error syncing '%s'", query)
+            results["errors"].append({"name": query, "error": str(err)})
+
+    await coordinator.async_request_refresh()
+    return results
+
+
+def _register_auto_sync_listener(
+    hass: HomeAssistant,
+    entry: SparConfigEntry,
+    coordinator: SparCoordinator,
+) -> None:
+    """Register a coordinator listener that auto-syncs when a new cart is detected."""
+
+    @callback
+    def _on_coordinator_update() -> None:
+        if not coordinator.new_cart_detected:
+            return
+        if not entry.options.get("auto_sync", False):
+            return
+        shopping_list = _get_shopping_list(hass, entry.entry_id)
+        if not shopping_list:
+            return
+        pending = [
+            i
+            for i in (shopping_list.todo_items or [])
+            if i.status == TodoItemStatus.NEEDS_ACTION
+        ]
+        if not pending:
+            return
+        _LOGGER.info(
+            "New cart detected — auto-syncing %d items from shopping list",
+            len(pending),
+        )
+        pref_store = _get_pref_store(hass)
+        hass.async_create_task(
+            _do_sync_list_to_cart(coordinator, pref_store, shopping_list),
+            name="spar_si_auto_sync",
+        )
+
+    entry.async_on_unload(coordinator.async_add_listener(_on_coordinator_update))
 
 
 def _register_services(hass: HomeAssistant) -> None:
@@ -295,6 +412,39 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "get_preferences",
         handle_get_preferences,
+        schema=vol.Schema({}),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── sync_list_to_cart ─────────────────────────────────────
+    async def handle_sync_list_to_cart(call: ServiceCall) -> dict:
+        """Sync all pending shopping list items to the SPAR cart.
+
+        Searches for each item on the shopping list, adds found products
+        to the SPAR cart, and marks them as completed on the list.
+        Items that cannot be found are left unchanged on the list.
+        """
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"added": [], "not_found": [], "errors": [], "total": 0}
+
+        entries = hass.config_entries.async_entries(DOMAIN)
+        if not entries:
+            return {"added": [], "not_found": [], "errors": [], "total": 0}
+
+        shopping_list = _get_shopping_list(hass, entries[0].entry_id)
+        if not shopping_list:
+            return {"added": [], "not_found": [], "errors": [], "total": 0}
+
+        pref_store = _get_pref_store(hass)
+        results = await _do_sync_list_to_cart(coordinator, pref_store, shopping_list)
+        results["total"] = len(results["added"]) + len(results["not_found"]) + len(results["errors"])
+        return results
+
+    hass.services.async_register(
+        DOMAIN,
+        "sync_list_to_cart",
+        handle_sync_list_to_cart,
         schema=vol.Schema({}),
         supports_response=SupportsResponse.ONLY,
     )

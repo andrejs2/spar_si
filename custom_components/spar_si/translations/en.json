@@ -49,7 +49,11 @@
       "init": {
         "title": "SPAR Online options",
         "data": {
-          "update_interval": "Cart update interval (minutes)"
+          "update_interval": "Cart update interval (minutes)",
+          "auto_sync": "Auto-sync shopping list to cart on new cart"
+        },
+        "data_description": {
+          "auto_sync": "When a new SPAR cart is detected, automatically add all pending shopping list items to the cart."
         }
       }
     }
@@ -118,6 +122,10 @@
     "get_preferences": {
       "name": "Get preferences",
       "description": "Get saved product preferences for search terms."
+    },
+    "sync_list_to_cart": {
+      "name": "Sync shopping list to cart",
+      "description": "Add all pending shopping list items to the SPAR cart. Marks added items as completed."
     }
   }
 }

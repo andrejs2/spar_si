@@ -49,7 +49,11 @@
       "init": {
         "title": "Nastavitve SPAR Online",
         "data": {
-          "update_interval": "Interval osveževanja košarice (minute)"
+          "update_interval": "Interval osveževanja košarice (minute)",
+          "auto_sync": "Samodejno sinhroniziraj seznam ob novi košarici"
+        },
+        "data_description": {
+          "auto_sync": "Ko je zaznana nova SPAR košarica, samodejno dodaj vse čakajoče artikle z nakupovalnega seznama v košarico."
         }
       }
     }
@@ -118,6 +122,10 @@
     "get_preferences": {
       "name": "Pridobi preference",
       "description": "Pridobi shranjene preference izdelkov za iskalne izraze."
+    },
+    "sync_list_to_cart": {
+      "name": "Sinhroniziraj seznam v košarico",
+      "description": "Dodaj vse čakajoče artikle z nakupovalnega seznama v SPAR košarico. Uspešno dodani artikli se označijo kot zaključeni."
     }
   }
 }

@@ -90,6 +90,18 @@ class SparShoppingListEntity(TodoListEntity):
             for item in saved_items
         ]
 
+    async def async_added_to_hass(self) -> None:
+        """Register entity reference for service access."""
+        self.hass.data.setdefault(DOMAIN, {})[
+            f"{self._entry.entry_id}_shopping_list"
+        ] = self
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister entity reference."""
+        self.hass.data.get(DOMAIN, {}).pop(
+            f"{self._entry.entry_id}_shopping_list", None
+        )
+
     @property
     def todo_items(self) -> list[TodoItem]:
         """Return the shopping list items."""
