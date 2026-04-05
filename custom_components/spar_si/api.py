@@ -69,7 +69,7 @@ class SparCartItem:
     image_url: str | None = None
 
 
-CART_MODIFIABLE_STATUSES = {"CREATED", "ACTIVE"}
+CART_MODIFIABLE_STATUSES = {"CREATED", "ACTIVE", "PROCESSING"}
 
 
 @dataclass
