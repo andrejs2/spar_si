@@ -501,3 +501,45 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({}),
         supports_response=SupportsResponse.ONLY,
     )
+
+    # ─── refresh_cart ──────────────────────────────────────────
+    async def handle_refresh_cart(call: ServiceCall) -> dict:
+        """Force-refresh the SPAR cart from online.spar.si.
+
+        Fetches the latest cart state immediately, bypassing the
+        polling interval. Useful after manually adding/removing items
+        on the website.
+        """
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return {"success": False, "error": "Integration not configured"}
+
+        await coordinator.async_refresh()
+        cart = coordinator.data
+        if not cart:
+            return {"success": False, "error": "No cart data"}
+
+        return {
+            "success": True,
+            "cart_id": cart.cart_id,
+            "cart_status": cart.status,
+            "is_modifiable": cart.is_modifiable,
+            "item_count": cart.item_count,
+            "items": [
+                {
+                    "name": item.name,
+                    "quantity": item.unit_quantity,
+                    "unit": item.unit,
+                    "price": item.price_total,
+                }
+                for item in cart.items
+            ],
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        "refresh_cart",
+        handle_refresh_cart,
+        schema=vol.Schema({}),
+        supports_response=SupportsResponse.ONLY,
+    )

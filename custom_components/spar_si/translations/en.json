@@ -126,6 +126,10 @@
     "sync_list_to_cart": {
       "name": "Sync shopping list to cart",
       "description": "Add all pending shopping list items to the SPAR cart. Marks added items as completed."
+    },
+    "refresh_cart": {
+      "name": "Refresh cart from SPAR Online",
+      "description": "Immediately fetch the latest cart state from online.spar.si, bypassing the polling interval."
     }
   }
 }

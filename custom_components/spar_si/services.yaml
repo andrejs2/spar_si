@@ -122,3 +122,11 @@ sync_list_to_cart:
     not found, and any errors. Call this after a new SPAR cart is created
     (e.g., after a completed order) to quickly repopulate the cart with the
     accumulated weekly shopping list.
+
+refresh_cart:
+  name: Refresh cart from SPAR Online
+  description: >-
+    Force-refresh the SPAR cart from online.spar.si immediately, bypassing
+    the polling interval. Useful when items were added/removed on the website
+    and you want to see the latest state in HA right away. Returns the full
+    cart contents including cart_id, status, modifiable flag, and all items.

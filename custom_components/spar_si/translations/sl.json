@@ -126,6 +126,10 @@
     "sync_list_to_cart": {
       "name": "Sinhroniziraj seznam v košarico",
       "description": "Dodaj vse čakajoče artikle z nakupovalnega seznama v SPAR košarico. Uspešno dodani artikli se označijo kot zaključeni."
+    },
+    "refresh_cart": {
+      "name": "Osveži košarico s SPAR Online",
+      "description": "Takoj prenese trenutno stanje košarice s spletne strani (mimo intervala osveževanja). Uporabno če si na spletu dodal artikle in želiš takoj videti spremembe v HA."
     }
   }
 }
