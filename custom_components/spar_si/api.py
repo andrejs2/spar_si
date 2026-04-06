@@ -69,7 +69,11 @@ class SparCartItem:
     image_url: str | None = None
 
 
-CART_MODIFIABLE_STATUSES = {"CREATED", "ACTIVE", "PROCESSING"}
+# Statuses where the cart is finalized and cannot be modified.
+# Empirically: CREATED, ACTIVE, PROCESSING, and VALIDATED are all modifiable
+# (the website successfully adds items even when status is VALIDATED).
+# Only COMPLETED (and CANCELLED if it exists) lock the cart.
+CART_NON_MODIFIABLE_STATUSES = {"COMPLETED", "CANCELLED"}
 
 
 @dataclass
@@ -84,7 +88,7 @@ class SparCart:
     @property
     def is_modifiable(self) -> bool:
         """Check if the cart can be modified (add/remove items)."""
-        return self.status in CART_MODIFIABLE_STATUSES or not self.status
+        return self.status not in CART_NON_MODIFIABLE_STATUSES
 
 
 @dataclass
@@ -528,7 +532,7 @@ class SparApiClient:
         if not self._cart_id:
             await self.async_get_or_create_cart()
 
-        if self._cart_status and self._cart_status not in CART_MODIFIABLE_STATUSES:
+        if self._cart_status in CART_NON_MODIFIABLE_STATUSES:
             raise SparApiError(
                 f"Košarica je v statusu '{self._cart_status}' in je ni mogoče spreminjati. "
                 "Odpri online.spar.si in dodaj artikel da ustvariš novo košarico."
@@ -567,7 +571,7 @@ class SparApiClient:
                     err,
                 )
                 await self.async_get_cart()
-                if self._cart_status and self._cart_status not in CART_MODIFIABLE_STATUSES:
+                if self._cart_status in CART_NON_MODIFIABLE_STATUSES:
                     raise SparApiError(
                         f"Košarica je v statusu '{self._cart_status}' in je ni mogoče spreminjati. "
                         "Odpri online.spar.si in dodaj artikel da ustvariš novo košarico."
