@@ -14,3 +14,8 @@ build/
 *.log
 .vscode/
 .idea/
+
+# Local dev artifacts (not for repo)
+spar-graphql-schema.md
+intent_results*.json
+home-assistant_*.log
